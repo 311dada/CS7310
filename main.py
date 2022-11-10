@@ -320,7 +320,7 @@ def task2(
         line += seq2tex(fake_optimal_seqs[i]) + " & "
         line += str(fake_optimal[i]) + " & "
         line += str(fake_optimal[i] / optimal[i] * 100) + " & "
-        line += str(counts[i]) + "\n"
+        line += str(counts[i]) + " \\\\\n"
 
         table += line
 
