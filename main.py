@@ -6,6 +6,7 @@ import folium
 from folium import PolyLine
 from typing import List
 import itertools
+from geopy.distance import geodesic
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
@@ -171,32 +172,15 @@ def seq2tex(seq):
     )
 
 
-def task1(link_data, distance_data):
-    logger.info("Start task 1 !!!")
-    # part 1
-    def get_table(p_num):
-        seqs = generate_valid_seqs(p_num)
-        counts = get_accumu_counts(seqs)
-
-        display_str = f"table for {p_num} passengers of task 1.1\n\n"
-        for i, seq in enumerate(seqs):
-            display_str += f"{i + 1} & {seq2tex(seq)} & {counts[i]}\n"
-
-        logger.info(display_str)
-
-        return seqs
-
-    two_passengers_seqs = get_table(2)
-    three_passengers_seqs = get_table(3)
-
-    # part 2
-    # two passengers
-
-    table = "table for task 1.2\n\n"
+def traverse(cases, seqs_list, link_data, distance_data):
+    optimal = []
+    optimal_seqs = []
+    table = ""
     for i, case in enumerate(cases):
         optimal_seq = None
         minm_dist = float("inf")
-        seqs = two_passengers_seqs if i < 5 else three_passengers_seqs
+        # seqs = two_passengers_seqs if i < 5 else three_passengers_seqs
+        seqs = seqs_list[i]
         for seq in seqs:
             positions = []
             for pos in seq:
@@ -220,16 +204,127 @@ def task1(link_data, distance_data):
             line += "三拼 & "
 
         line += seq2tex(optimal_seq) + " & "
-        line += str(minm_dist) + "\n"
+        line += str(minm_dist) + " \\\\\n"
+
+        table += line
+
+        optimal.append(minm_dist)
+        optimal_seqs.append(optimal_seq)
+
+    return optimal, table, optimal_seqs
+
+
+def task1(link_data, distance_data, cases):
+    logger.info("Start task 1 !!!")
+    # part 1
+    def get_table(p_num):
+        seqs = generate_valid_seqs(p_num)
+        counts = get_accumu_counts(seqs)
+
+        display_str = f"table for {p_num} passengers of task 1.1\n\n"
+        for i, seq in enumerate(seqs):
+            display_str += f"{i + 1} & {seq2tex(seq)} & {counts[i]} \\\\\n"
+
+        logger.info(display_str)
+
+        return seqs
+
+    two_passengers_seqs = get_table(2)
+    three_passengers_seqs = get_table(3)
+
+    # part 2
+    # two passengers
+    seqs_list = [
+        two_passengers_seqs if i < 5 else three_passengers_seqs for i in range(10)
+    ]
+
+    table = "table for task 1.2\n\n"
+
+    optimal, table_content, _ = traverse(cases, seqs_list, link_data, distance_data)
+
+    table += table_content
+
+    logger.info(table)
+    return two_passengers_seqs, three_passengers_seqs, optimal
+
+
+def filter_by_spherical_distance(cases, seqs_list, threshold=100):
+    filtered_seqs_list = []
+    for i, case in enumerate(cases):
+        seqs = seqs_list[i]
+
+        seqs_with_spherical_distance = []
+        for seq in seqs:
+            distance = 0
+            for i in range(len(seq) - 1):
+                lng1, lat1 = case[name2field[seq[i]][0]], case[name2field[seq[i]][1]]
+                lng2, lat2 = (
+                    case[name2field[seq[i + 1]][0]],
+                    case[name2field[seq[i + 1]][1]],
+                )
+
+                distance += geodesic((lat1, lng1), (lat2, lng2)).m
+
+            seqs_with_spherical_distance.append((seq, distance))
+
+        seqs_with_spherical_distance = sorted(
+            seqs_with_spherical_distance, key=lambda x: x[-1]
+        )
+        base = seqs_with_spherical_distance[0][-1]
+
+        filtered_seqs = [seqs_with_spherical_distance[0][0]]
+
+        for i in range(1, len(seqs_with_spherical_distance)):
+            if seqs_with_spherical_distance[i][-1] - base <= threshold:
+                filtered_seqs.append(seqs_with_spherical_distance[i][0])
+            else:
+                break
+
+        filtered_seqs_list.append(filtered_seqs)
+
+    return filtered_seqs_list
+
+
+# TODO
+def task2(
+    two_passengers_seqs, three_passengers_seqs, optimal, cases, link_data, distance_data
+):
+    logger.info("Start task 2 !!!")
+
+    # method 1: by spherical distance
+    seqs_list = [
+        two_passengers_seqs if i < 5 else three_passengers_seqs for i in range(10)
+    ]
+    filtered_seqs_list = filter_by_spherical_distance(cases, seqs_list, 1727.5)
+
+    table = "table for task 2\n\n"
+
+    fake_optimal, table_content, fake_optimal_seqs = traverse(
+        cases, filtered_seqs_list, link_data, distance_data
+    )
+
+    counts = [get_accumu_counts(seqs)[-1] for seqs in filtered_seqs_list]
+
+    for i in range(10):
+        line = "Case "
+
+        if i + 1 < 10:
+            line += "0"
+        line += str(i + 1) + " & "
+
+        if i < 5:
+            line += "双拼 & "
+        else:
+            line += "三拼 & "
+        
+        line += seq2tex(fake_optimal_seqs[i]) + " & "
+        line += str(fake_optimal[i]) + " & "
+        line += str(fake_optimal[i] / optimal[i] * 100) + " & "
+        line += str(counts[i]) + "\n"
 
         table += line
 
     logger.info(table)
-
-
-# TODO
-def task2():
-    logger.info("Start task 2 !!!")
 
 
 # TODO
@@ -305,8 +400,18 @@ if __name__ == "__main__":
 
     distance_dic = np.zeros(distance_data.shape)
 
-    task1(link_data.values, distance_data)
-    task2()
+    two_passengers_seqs, three_passengers_seqs, optimal = task1(
+        link_data.values, distance_data, cases
+    )
+
+    task2(
+        two_passengers_seqs,
+        three_passengers_seqs,
+        optimal,
+        cases,
+        link_data.values,
+        distance_data,
+    )
     task3()
     task4()
 
