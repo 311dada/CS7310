@@ -15,6 +15,16 @@ logger = logging.getLogger(__name__)
 cnt = 0
 distance_dic = None
 
+name2field = {
+    "c": ("经度.6", "纬度.6", "所在link", "ratio.6"),
+    "o1": ("经度", "纬度", "邻近link", "ratio"),
+    "d1": ("经度.1", "纬度.1", "邻近link.1", "ratio.1"),
+    "o2": ("经度.2", "纬度.2", "邻近link.2", "ratio.2"),
+    "d2": ("经度.3", "纬度.3", "邻近link.3", "ratio.3"),
+    "o3": ("经度.4", "纬度.4", "邻近link.4", "ratio.4"),
+    "d3": ("经度.5", "纬度.5", "邻近link.5", "ratio.5"),
+}
+
 
 def parse():
     parser = argparse.ArgumentParser("==== CS7310 Group Project Parser ====")
@@ -65,8 +75,8 @@ def build_graph(link_data):
     return G_edges, G_nodes_dic
 
 
-def d(x, y):
-    global cnt, distance_dic, distance_data
+def d(x, y, distance_data):
+    global cnt, distance_dic
     if x == y:
         return 0
     if distance_dic[x][y] < 1e-5:  # 没存过
@@ -80,7 +90,7 @@ def d(x, y):
 # S为List存储的序列，序列中每个元素为一个位置p，每个位置p应该包含[经度，纬度，邻近Link，所占比例]四种信息
 # 例: S=[pc,po1,po2,pd1,pd2]  其中 po2=[104.092231,30.687216,946,0.5]
 # Output: 输入S序列对应的路径距离
-def compute_distance(S):
+def compute_distance(S, link_data, distance_data):
     distance = 0
     # 每一轮计算p_i到p_{i+1}之间的距离
     for i in range(len(S) - 1):
@@ -93,10 +103,10 @@ def compute_distance(S):
         # Ratio_D 为目的地在其对应边上的比例
         Ratio_D = S[i + 1][3]
         # Node_1为出发点对应边的终点
-        Node_1 = link_data[Link_O - 1][4]
+        Node_1 = int(link_data[Link_O - 1][4])
         # Node_2为目的地对应边的起点
-        Node_2 = link_data[Link_D - 1][1]
-        distance += d(Node_1, Node_2)
+        Node_2 = int(link_data[Link_D - 1][1])
+        distance += d(Node_1, Node_2, distance_data)
         # 加上出发点到出发点所在边终点的距离
         distance += link_data[Link_O - 1][7] * (1 - Ratio_O)
         # 加上目的地所在边起点到目的地的距离
@@ -161,23 +171,60 @@ def seq2tex(seq):
     )
 
 
-def task1():
+def task1(link_data, distance_data):
     logger.info("Start task 1 !!!")
     # part 1
     def get_table(p_num):
         seqs = generate_valid_seqs(p_num)
         counts = get_accumu_counts(seqs)
 
-        display_str = f"table for {p_num} passengers of task 1.1\n"
+        display_str = f"table for {p_num} passengers of task 1.1\n\n"
         for i, seq in enumerate(seqs):
             display_str += f"{i + 1} & {seq2tex(seq)} & {counts[i]}\n"
 
         logger.info(display_str)
 
-    get_table(2)
-    get_table(3)
+        return seqs
 
-    # TODO: part 2
+    two_passengers_seqs = get_table(2)
+    three_passengers_seqs = get_table(3)
+
+    # part 2
+    # two passengers
+
+    table = "table for task 1.2\n\n"
+    for i, case in enumerate(cases):
+        optimal_seq = None
+        minm_dist = float("inf")
+        seqs = two_passengers_seqs if i < 5 else three_passengers_seqs
+        for seq in seqs:
+            positions = []
+            for pos in seq:
+                positions.append([case[field] for field in name2field[pos]])
+
+            dist = compute_distance(positions, link_data, distance_data)
+
+            if dist < minm_dist:
+                optimal_seq = seq
+                minm_dist = dist
+
+        line = "Case "
+
+        if i + 1 < 10:
+            line += "0"
+        line += str(i + 1) + " & "
+
+        if i < 5:
+            line += "双拼 & "
+        else:
+            line += "三拼 & "
+
+        line += seq2tex(optimal_seq) + " & "
+        line += str(minm_dist) + "\n"
+
+        table += line
+
+    logger.info(table)
 
 
 # TODO
@@ -254,11 +301,11 @@ def visualize(cases):
 if __name__ == "__main__":
     args = parse()
     distance_data, link_data, cases = load_data(args)
-    G_edges, G_nodes_dic = build_graph(link_data)
+    # G_edges, G_nodes_dic = build_graph(link_data)
 
     distance_dic = np.zeros(distance_data.shape)
 
-    task1()
+    task1(link_data.values, distance_data)
     task2()
     task3()
     task4()
