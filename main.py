@@ -7,6 +7,7 @@ from folium import PolyLine
 from typing import List
 import itertools
 from geopy.distance import geodesic
+import math
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
@@ -15,6 +16,11 @@ logger = logging.getLogger(__name__)
 
 cnt = 0
 distance_dic = None
+a = 6378137.0000
+b = 6356752.3142
+B0 = 0
+L0 = 0
+K = a * math.cos(B0) / math.sqrt(1 - pow(math.exp(2), 2) * pow(math.sin(B0), 2))
 
 name2field = {
     "c": ("经度.6", "纬度.6", "所在link", "ratio.6"),
@@ -285,7 +291,80 @@ def filter_by_spherical_distance(cases, seqs_list, threshold=100):
     return filtered_seqs_list
 
 
+def marcatorxy(x, y):
+    xx = x / 180 * 20037508.3427892
+    yy = math.log(math.tan((90 + y) * math.pi / 360)) / (math.pi / 180)
+    marcator_x = xx
+    marcator_y = yy * 20037508.34 / 180
+    return marcator_x, marcator_y
+
+
+def azimuthAngle(x1, y1, x2, y2):
+    angle = 0.0
+    dx = x2 - x1
+    dy = y2 - y1
+    if x2 == x1:
+        angle = math.pi / 2.0
+        if y2 == y1:
+            angle = 0.0
+        elif y2 < y1:
+            angle = 3.0 * math.pi / 2.0
+    elif x2 > x1 and y2 > y1:
+        angle = math.atan(dx / dy)
+    elif x2 > x1 and y2 < y1:
+        angle = math.pi / 2 + math.atan(-dy / dx)
+    elif x2 < x1 and y2 < y1:
+        angle = math.pi + math.atan(dx / dy)
+    elif x2 < x1 and y2 > y1:
+        angle = 3.0 * math.pi / 2.0 + math.atan(dy / -dx)
+    return angle * 180 / math.pi
+
+
 # TODO
+def filter_by_angles(cases, seqs_list, threshold=145):
+    filtered_seqs_list = []
+    for i, case in enumerate(cases):
+        seqs = seqs_list[i]
+
+        selected_seqs = []
+        for seq in seqs:
+            cut = False
+            for i in range(len(seq) - 2):
+                lng1, lat1 = case[name2field[seq[i]][0]], case[name2field[seq[i]][1]]
+                lng2, lat2 = (
+                    case[name2field[seq[i + 1]][0]],
+                    case[name2field[seq[i + 1]][1]],
+                )
+                lng3, lat3 = (
+                    case[name2field[seq[i + 2]][0]],
+                    case[name2field[seq[i + 2]][1]],
+                )
+
+                x1, y1 = marcatorxy(lng1, lat1)
+                x2, y2 = marcatorxy(lng2, lat2)
+                x3, y3 = marcatorxy(lng3, lat3)
+
+                angle1 = azimuthAngle(x1, y1, x2, y2)
+                angle2 = azimuthAngle(x2, y2, x3, y3)
+
+                angle = abs(angle1 - angle2)
+
+                if angle > 180:
+                    angle = 360 - angle
+
+                print(angle)
+
+                if angle > threshold:
+                    cut = True
+                    break
+            if not cut:
+                selected_seqs.append(seq)
+
+        filtered_seqs_list.append(selected_seqs)
+
+    return filtered_seqs_list
+
+
 def task2(
     two_passengers_seqs, three_passengers_seqs, optimal, cases, link_data, distance_data
 ):
@@ -295,11 +374,16 @@ def task2(
     seqs_list = [
         two_passengers_seqs if i < 5 else three_passengers_seqs for i in range(10)
     ]
-    filtered_seqs_list = filter_by_spherical_distance(cases, seqs_list, 1727.5)
+    # filtered_seqs_list = filter_by_spherical_distance(cases, seqs_list, 1727.5)
+    filtered_seqs_list = filter_by_spherical_distance(cases, seqs_list, 500)
+
+
+    # method 2: by angles
+    filtered_seqs_list = filter_by_angles(cases, filtered_seqs_list, 150)
 
     table = "table for task 2\n\n"
 
-    fake_optimal, table_content, fake_optimal_seqs = traverse(
+    fake_optimal, _, fake_optimal_seqs = traverse(
         cases, filtered_seqs_list, link_data, distance_data
     )
 
@@ -316,7 +400,7 @@ def task2(
             line += "双拼 & "
         else:
             line += "三拼 & "
-        
+
         line += seq2tex(fake_optimal_seqs[i]) + " & "
         line += str(fake_optimal[i]) + " & "
         line += str(fake_optimal[i] / optimal[i] * 100) + " & "
