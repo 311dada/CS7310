@@ -30,7 +30,66 @@ name2field = {
     "d2": ("经度.3", "纬度.3", "邻近link.3", "ratio.3"),
     "o3": ("经度.4", "纬度.4", "邻近link.4", "ratio.4"),
     "d3": ("经度.5", "纬度.5", "邻近link.5", "ratio.5"),
+    "co1": ("经纬度", "邻近link.6", "ratio.7"),
+    "cd1": ("经纬度.1", "邻近link.7", "ratio.8"),
+    "co2": ("经纬度.2", "邻近link.8", "ratio.9"),
+    "cd2": ("经纬度.3", "邻近link.9", "ratio.10"),
+    "co3": ("经纬度.4", "邻近link.10", "ratio.11"),
+    "cd3": ("经纬度.5", "邻近link.11", "ratio.12"),
 }
+
+def fetch_point_from_case(case, mark):
+    """
+    :param case: {u1: {o: Point, d: Point, candidate_o: [Point], candidate_d: [Point]}}
+    :param mark: c/o1/d2
+    :return: {la:float, lo:float, link: int, ratio: float}
+    """
+    if mark == "c":
+        return case["c"]
+    p, idx = mark[0], mark[1]
+    return case["u"+idx][p]
+
+def convert_case(cases):
+    """
+    Point: {la:float, lo:float, link: int, ratio: float}
+    :param case: case dict from read_csv
+    :return: {u1: {o: Point, d: Point, candidate_o: [Point], candidate_d: [Point]}}
+    """
+    result = []
+    for case in cases:
+        new_case = {}
+        for i in range(1, 4):
+            key = "o" + str(i)
+            start = {"lo": case[name2field[key][0]], "la": case[name2field[key][1]],
+                     "link": case[name2field[key][2]], "ratio": case[name2field[key][3]]}
+            key = "d" + str(i)
+            end = {"lo": case[name2field[key][0]], "la": case[name2field[key][1]],
+                   "link": case[name2field[key][2]], "ratio": case[name2field[key][3]]}
+            key = "co"+str(i)
+            candidate_point = eval(case[name2field[key][0]])
+            candidate_link = eval(case[name2field[key][1]])
+            candidate_ratio = eval(case[name2field[key][2]])
+            candidate_start = []
+            for j in range(len(candidate_point)):
+                point = {"lo": candidate_point[j][0], "la": candidate_point[j][1],
+                         "link": candidate_link[j], "ratio": candidate_ratio[j]}
+                candidate_start.append(point)
+            key = "cd" + str(i)
+            candidate_point = eval(case[name2field[key][0]])
+            candidate_link = eval(case[name2field[key][1]])
+            candidate_ratio = eval(case[name2field[key][2]])
+            candidate_end = []
+            for j in range(len(candidate_point)):
+                point = {"lo": candidate_point[j][0], "la": candidate_point[j][1],
+                         "link": candidate_link[j], "ratio": candidate_ratio[j]}
+                candidate_end.append(point)
+            new_case["u" + str(i)] = {"o": start, "d": end,
+                                      "candidate_o": candidate_start, "candidate_d": candidate_end}
+        key = "c"
+        new_case["c"] = {"lo": case[name2field[key][0]], "la": case[name2field[key][1]],
+                         "link": case[name2field[key][2]], "ratio": case[name2field[key][3]]}
+        result.append(new_case)
+    return result
 
 
 def parse():
@@ -188,9 +247,12 @@ def traverse(cases, seqs_list, link_data, distance_data):
         # seqs = two_passengers_seqs if i < 5 else three_passengers_seqs
         seqs = seqs_list[i]
         for seq in seqs:
-            positions = []
+            positions = [] # [(lo, la, link, ratio)]
+            # seq: [c, o1, o2, d1, d2]
             for pos in seq:
-                positions.append([case[field] for field in name2field[pos]])
+                # positions.append([case[field] for field in name2field[pos]])
+                point = fetch_point_from_case(case, pos)
+                positions.append([point["lo"], point["la"], point["link"], point["ratio"]])
 
             dist = compute_distance(positions, link_data, distance_data)
 
@@ -222,6 +284,7 @@ def traverse(cases, seqs_list, link_data, distance_data):
 
 def task1(link_data, distance_data, cases):
     logger.info("Start task 1 !!!")
+
     # part 1
     def get_table(p_num):
         seqs = generate_valid_seqs(p_num)
@@ -263,13 +326,10 @@ def filter_by_spherical_distance(cases, seqs_list, threshold=100):
         for seq in seqs:
             distance = 0
             for i in range(len(seq) - 1):
-                lng1, lat1 = case[name2field[seq[i]][0]], case[name2field[seq[i]][1]]
-                lng2, lat2 = (
-                    case[name2field[seq[i + 1]][0]],
-                    case[name2field[seq[i + 1]][1]],
-                )
+                start = fetch_point_from_case(case, seq[i])
+                end = fetch_point_from_case(case, seq[i+1])
 
-                distance += geodesic((lat1, lng1), (lat2, lng2)).m
+                distance += geodesic((start["la"], start["lo"]), (end["la"], end["lo"])).m
 
             seqs_with_spherical_distance.append((seq, distance))
 
@@ -330,15 +390,13 @@ def filter_by_angles(cases, seqs_list, threshold=145):
         for seq in seqs:
             cut = False
             for i in range(len(seq) - 2):
-                lng1, lat1 = case[name2field[seq[i]][0]], case[name2field[seq[i]][1]]
-                lng2, lat2 = (
-                    case[name2field[seq[i + 1]][0]],
-                    case[name2field[seq[i + 1]][1]],
-                )
-                lng3, lat3 = (
-                    case[name2field[seq[i + 2]][0]],
-                    case[name2field[seq[i + 2]][1]],
-                )
+                p1 = fetch_point_from_case(case, seq[i])
+                p2 = fetch_point_from_case(case, seq[i+1])
+                p3 = fetch_point_from_case(case, seq[i+2])
+
+                lng1, lat1 = p1["lo"], p1["la"]
+                lng2, lat2 = p2["lo"], p2["la"]
+                lng3, lat3 = p3["lo"], p3["la"]
 
                 x1, y1 = marcatorxy(lng1, lat1)
                 x2, y2 = marcatorxy(lng2, lat2)
@@ -366,7 +424,7 @@ def filter_by_angles(cases, seqs_list, threshold=145):
 
 
 def task2(
-    two_passengers_seqs, three_passengers_seqs, optimal, cases, link_data, distance_data
+        two_passengers_seqs, three_passengers_seqs, optimal, cases, link_data, distance_data
 ):
     logger.info("Start task 2 !!!")
 
@@ -376,7 +434,6 @@ def task2(
     ]
     # filtered_seqs_list = filter_by_spherical_distance(cases, seqs_list, 1727.5)
     filtered_seqs_list = filter_by_spherical_distance(cases, seqs_list, 500)
-
 
     # method 2: by angles
     filtered_seqs_list = filter_by_angles(cases, filtered_seqs_list, 150)
@@ -480,23 +537,24 @@ def visualize(cases):
 if __name__ == "__main__":
     args = parse()
     distance_data, link_data, cases = load_data(args)
+    new_cases = convert_case(cases)
     # G_edges, G_nodes_dic = build_graph(link_data)
 
     distance_dic = np.zeros(distance_data.shape)
 
     two_passengers_seqs, three_passengers_seqs, optimal = task1(
-        link_data.values, distance_data, cases
+        link_data.values, distance_data, new_cases
     )
 
     task2(
         two_passengers_seqs,
         three_passengers_seqs,
         optimal,
-        cases,
+        new_cases,
         link_data.values,
         distance_data,
     )
     task3()
     task4()
 
-    # visualize(cases)
+    visualize(cases)
