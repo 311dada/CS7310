@@ -778,7 +778,7 @@ if __name__ == "__main__":
     ### for balanced solution, use k=4， filter_reverse=True or k=3, filter_reverse=False
     task3_solution = task3(two_passengers_seqs, three_passengers_seqs, link_data, distance_data, new_cases,
                                                           False, 8)
-                                   task3_eval_result = eval_task3(task3_optimal, task3_solution)
+    task3_eval_result = eval_task3(task3_optimal, task3_solution)
 
 
     task4()
