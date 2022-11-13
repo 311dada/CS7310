@@ -1,4 +1,7 @@
 import argparse
+import json
+from collections import Counter
+
 import pandas as pd
 import logging
 import numpy as np
@@ -8,6 +11,7 @@ from typing import List
 import itertools
 from geopy.distance import geodesic
 import math
+from copy import deepcopy
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
@@ -38,7 +42,8 @@ name2field = {
     "cd3": ("经纬度.5", "邻近link.11", "ratio.12"),
 }
 
-def fetch_point_from_case(case, mark):
+
+def fetch_point_from_case(case, mark, candidate=False):
     """
     :param case: {u1: {o: Point, d: Point, candidate_o: [Point], candidate_d: [Point]}}
     :param mark: c/o1/d2
@@ -47,7 +52,10 @@ def fetch_point_from_case(case, mark):
     if mark == "c":
         return case["c"]
     p, idx = mark[0], mark[1]
-    return case["u"+idx][p]
+    if candidate:
+        p = "candidate_" + p
+    return case["u" + idx][p]
+
 
 def convert_case(cases):
     """
@@ -65,7 +73,7 @@ def convert_case(cases):
             key = "d" + str(i)
             end = {"lo": case[name2field[key][0]], "la": case[name2field[key][1]],
                    "link": case[name2field[key][2]], "ratio": case[name2field[key][3]]}
-            key = "co"+str(i)
+            key = "co" + str(i)
             candidate_point = eval(case[name2field[key][0]])
             candidate_link = eval(case[name2field[key][1]])
             candidate_ratio = eval(case[name2field[key][2]])
@@ -247,7 +255,7 @@ def traverse(cases, seqs_list, link_data, distance_data):
         # seqs = two_passengers_seqs if i < 5 else three_passengers_seqs
         seqs = seqs_list[i]
         for seq in seqs:
-            positions = [] # [(lo, la, link, ratio)]
+            positions = []  # [(lo, la, link, ratio)]
             # seq: [c, o1, o2, d1, d2]
             for pos in seq:
                 # positions.append([case[field] for field in name2field[pos]])
@@ -327,7 +335,7 @@ def filter_by_spherical_distance(cases, seqs_list, threshold=100):
             distance = 0
             for i in range(len(seq) - 1):
                 start = fetch_point_from_case(case, seq[i])
-                end = fetch_point_from_case(case, seq[i+1])
+                end = fetch_point_from_case(case, seq[i + 1])
 
                 distance += geodesic((start["la"], start["lo"]), (end["la"], end["lo"])).m
 
@@ -391,8 +399,8 @@ def filter_by_angles(cases, seqs_list, threshold=145):
             cut = False
             for i in range(len(seq) - 2):
                 p1 = fetch_point_from_case(case, seq[i])
-                p2 = fetch_point_from_case(case, seq[i+1])
-                p3 = fetch_point_from_case(case, seq[i+2])
+                p2 = fetch_point_from_case(case, seq[i + 1])
+                p3 = fetch_point_from_case(case, seq[i + 2])
 
                 lng1, lat1 = p1["lo"], p1["la"]
                 lng2, lat2 = p2["lo"], p2["la"]
@@ -468,9 +476,186 @@ def task2(
     logger.info(table)
 
 
-# TODO
-def task3():
+def get_optimal_task3(two_passengers_seqs, three_passengers_seqs, link_data, distance_data, cases):
+    logger.info("Computing optimal solution for task 3 by brute force search")
+    # for each case find the optimal solution by brute force search
+    optimal = []
+    for i in range(len(cases)):
+        if i < 5:
+            seqs = two_passengers_seqs
+        else:
+            seqs = three_passengers_seqs
+
+        best_solution = {"path": [], "distance": np.inf}
+        call_cache = set()
+        for seq in seqs:
+            locations = []
+            count = 1
+            for pos in seq:
+                points = fetch_point_from_case(cases[i], pos, candidate=True)
+                if pos == "c":
+                    locations.append([points])
+                else:
+                    locations.append(points)
+                    count *= len(points)
+
+            current_seq = deepcopy(locations)
+            current_path = []
+
+            def dfs(i):
+                if i == len(current_seq):
+                    S = []
+                    for j in range(len(current_path) - 1):
+                        call_cache.add((current_path[j], current_path[j + 1]))
+                    for pos_idx, candidate_idx in enumerate(current_path):
+                        point = current_seq[pos_idx][candidate_idx]
+                        S.append([point["lo"], point["la"], point["link"], point["ratio"]])
+                    distance = compute_distance(S, link_data, distance_data)
+                    if distance < best_solution["distance"]:
+                        best_solution["distance"] = distance
+                        best_solution["path"] = deepcopy(current_path)
+                    return
+
+                for idx, seq in enumerate(current_seq[i]):
+                    current_path.append(idx)
+                    dfs(i + 1)
+                    current_path.pop()
+
+            print("Generating total {} possible path for seq {} in case {}".format(count, seq, i + 1))
+            dfs(0)  # generate all possible path
+
+        optimal.append((best_solution["path"], best_solution["distance"], len(call_cache)))
+    return optimal
+
+
+def filter_candidate_by_direction(seq, link_data, filter_reverse=False, k=8):
+    """
+    Main idea: keep the candidates that are the same direction of the current driving direction
+    :param seq: [[(la, lo, link, ratio)]], a sequence of candidate positions
+    :param link_data: provided link_data
+    :return: filtered seq
+    """
+
+    def vector_product(x1, y1, x2, y2):
+        return x1 * x2 + y1 * y2
+
+    def get_link_vector(link):
+        link_detail = link_data.loc[link - 1]
+        start_point = {"la": link_detail["Latitude_Start"], "lo": link_detail["Longitude_Start"]}
+        end_point = {"la": link_detail["Latitude_End"], "lo": link_detail["Longitude_End"]}
+        return end_point["lo"] - start_point["lo"], end_point["la"] - start_point["la"]
+
+    origin = 1
+    for candidate in seq:
+        origin *= len(candidate)
+
+    filtered_seq = [seq[0]]
+    for i in range(len(seq) - 1):
+        start = seq[i][0]
+        end = seq[i + 1]
+
+        main_direction = get_link_vector(start["link"])
+
+        product = []
+        for candidate in end:
+            candidate_direction = get_link_vector(candidate["link"])
+            product.append((candidate, vector_product(main_direction[0], main_direction[1],
+                                                      candidate_direction[0], candidate_direction[1])))
+        # method 1: discard candidates with reversed direction
+        if filter_reverse:
+            same_direction = [p for p in product if p[1]>=0]
+            if len(same_direction) > 0:
+                product = same_direction
+
+        # method 2: sort and select the top k most candidate
+        product = sorted(product, key=lambda x: x[1], reverse=True)
+        product = product[:k]
+        filtered_seq.append([p[0] for p in product])
+    after = 1
+    for candidate in filtered_seq:
+        after *= len(candidate)
+    print("Reduce candidate from {} to {}".format(origin, after))
+    return filtered_seq
+
+
+def task3(two_passengers_seqs, three_passengers_seqs, link_data, distance_data, cases,
+          filter_reverse=False, k=8):
     logger.info("Start task 3 !!!")
+    link_data_values = link_data.values
+    seqs_list = [
+        two_passengers_seqs if i < 5 else three_passengers_seqs for i in range(10)
+    ]
+    filtered_seqs_list = filter_by_spherical_distance(cases, seqs_list, 500)
+
+    # method 2: by angles
+    filtered_seqs_list = filter_by_angles(cases, filtered_seqs_list, 150)
+
+    optimal = []
+    for i in range(len(cases)):
+        print("Computing the {} case".format(i + 1))
+        seqs = filtered_seqs_list[i]
+        best_solution = {"path": [], "distance": np.inf}
+        call_cache = set()
+        for seq in seqs:
+            locations = []
+            count = 1
+            for pos in seq:
+                points = fetch_point_from_case(cases[i], pos, candidate=True)
+                if pos == "c":
+                    locations.append([points])
+                else:
+                    locations.append(points)
+                    count *= len(points)
+
+            current_seq = deepcopy(locations)
+            current_seq = filter_candidate_by_direction(current_seq, link_data, filter_reverse, k)
+            current_path = []
+
+            def dfs(i):
+                if i == len(current_seq):
+                    S = []
+                    for j in range(len(current_path) - 1):
+                        call_cache.add((current_path[j], current_path[j + 1]))
+                    for pos_idx, candidate_idx in enumerate(current_path):
+                        point = current_seq[pos_idx][candidate_idx]
+                        S.append([point["lo"], point["la"], point["link"], point["ratio"]])
+                    distance = compute_distance(S, link_data_values, distance_data)
+                    if distance < best_solution["distance"]:
+                        best_solution["distance"] = distance
+                        best_solution["path"] = deepcopy(current_path)
+                    return
+
+                for idx, seq in enumerate(current_seq[i]):
+                    current_path.append(idx)
+                    dfs(i + 1)
+                    current_path.pop()
+
+            # print("Generating total {} possible path for seq {} in case {}".format(count, seq, i + 1))
+            dfs(0)  # generate all possible path
+
+        optimal.append((best_solution["path"], best_solution["distance"], len(call_cache)))
+    return optimal
+
+
+def eval_task3(optimal, solution):
+    result = []
+    total_optimal = {"distance": 0, "count": 0}
+    total_solution = {"distance": 0, "count": 0}
+    for i in range(len(optimal)):
+        result.append({
+            "distance_rate": solution[i][1] / optimal[i][1],
+            "count_rate": solution[i][2] / optimal[i][2]
+        })
+        total_optimal["distance"] += optimal[i][1]
+        total_optimal["count"] += optimal[i][2]
+        total_solution["distance"] += solution[i][1]
+        total_solution["count"] += solution[i][2]
+    total = {"distance_added": total_solution["distance"] - total_optimal["distance"],
+             "count_saved": total_optimal["count"] - total_solution["count"],
+             "distance_rate": total_solution["distance"] / total_optimal["distance"],
+             "count_rate": total_solution["count"] / total_optimal["count"]}
+
+    return result, total
 
 
 # TODO
@@ -554,7 +739,48 @@ if __name__ == "__main__":
         link_data.values,
         distance_data,
     )
-    task3()
+    """
+    Task 3
+    """
+    ##### compute and save brute force results
+    # task3_optimal = get_optimal_task3(two_passengers_seqs, three_passengers_seqs, link_data.values, distance_data, new_cases)
+    task3_optimal = json.loads(open("./task3.optimal").read())
+    ##### grid search the combination of filter method
+    # grid_search = []
+    # for k in range(1,9):
+    #     for filter_reverse in [True, False]:
+    #         task3_solution = task3(two_passengers_seqs, three_passengers_seqs, link_data, distance_data, new_cases,
+    #                                filter_reverse, k)
+    #         task3_eval_result = eval_task3(task3_optimal, task3_solution)
+    #         grid_search.append((k, filter_reverse, task3_eval_result[1]["distance_rate"], task3_eval_result[1]["count_rate"]))
+    # grid_search = sorted(grid_search, key=lambda x:x[2])
+    # for line in grid_search:
+    #     print(line)
+    """
+    (8, False, 1.0, 0.849772382397572)
+    (7, False, 1.0009145321615225, 0.6919575113808801)
+    (6, False, 1.0014469111724515, 0.5402124430955993)
+    (5, False, 1.008361301871403, 0.37784522003034904)
+    (4, False, 1.0259174582164554, 0.24279210925644917)
+    (5, True, 1.0353929464088563, 0.23823975720789076)
+    (6, True, 1.0353929464088563, 0.23823975720789076)
+    (7, True, 1.0353929464088563, 0.23823975720789076)
+    (8, True, 1.0353929464088563, 0.23823975720789076)
+    (4, True, 1.035984799523371, 0.21699544764795145)
+    (3, False, 1.0393437604913418, 0.13657056145675264)
+    (3, True, 1.0416713730116038, 0.13657056145675264)
+    (2, True, 1.075815656787688, 0.06069802731411229)
+    (2, False, 1.075815656787688, 0.06069802731411229)
+    (1, True, 1.1463757254949247, 0.015174506828528073)
+    (1, False, 1.1463757254949247, 0.015174506828528073)
+    """
+    ### for always find the shortest distance, use k=8 and filter_reverse=False
+    ### for balanced solution, use k=4， filter_reverse=True or k=3, filter_reverse=False
+    task3_solution = task3(two_passengers_seqs, three_passengers_seqs, link_data, distance_data, new_cases,
+                                                          False, 8)
+                                   task3_eval_result = eval_task3(task3_optimal, task3_solution)
+
+
     task4()
 
     visualize(cases)
