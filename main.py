@@ -279,7 +279,7 @@ def traverse(cases, seqs_list, link_data, distance_data):
         else:
             line += "三拼 & "
 
-        line += seq2tex(optimal_seq) + " & "
+        line += "$"+seq2tex(optimal_seq) + "$ & "
         line += str(minm_dist) + " \\\\\n"
 
         table += line
@@ -300,7 +300,7 @@ def task1(link_data, distance_data, cases):
 
         display_str = f"table for {p_num} passengers of task 1.1\n\n"
         for i, seq in enumerate(seqs):
-            display_str += f"{i + 1} & {seq2tex(seq)} & {counts[i]} \\\\\n"
+            display_str += f"{i + 1} & ${seq2tex(seq)}$ & {counts[i]} \\\\\n"
 
         logger.info(display_str)
 
@@ -322,7 +322,7 @@ def task1(link_data, distance_data, cases):
     table += table_content
 
     logger.info(table)
-    return two_passengers_seqs, three_passengers_seqs, optimal
+    return two_passengers_seqs, three_passengers_seqs, optimal, _
 
 
 def filter_by_spherical_distance(cases, seqs_list, threshold=100):
@@ -466,7 +466,7 @@ def task2(
         else:
             line += "三拼 & "
 
-        line += seq2tex(fake_optimal_seqs[i]) + " & "
+        line += "$"+seq2tex(fake_optimal_seqs[i]) + "$ & "
         line += str(fake_optimal[i]) + " & "
         line += str(fake_optimal[i] / optimal[i] * 100) + " & "
         line += str(counts[i]) + " \\\\\n"
@@ -474,6 +474,7 @@ def task2(
         table += line
 
     logger.info(table)
+    return fake_optimal_seqs
 
 
 def get_optimal_task3(two_passengers_seqs, three_passengers_seqs, link_data, distance_data, cases):
@@ -491,7 +492,9 @@ def get_optimal_task3(two_passengers_seqs, three_passengers_seqs, link_data, dis
         for seq in seqs:
             locations = []
             count = 1
+            pos_list = []
             for pos in seq:
+                pos_list.append(pos)
                 points = fetch_point_from_case(cases[i], pos, candidate=True)
                 if pos == "c":
                     locations.append([points])
@@ -506,9 +509,9 @@ def get_optimal_task3(two_passengers_seqs, three_passengers_seqs, link_data, dis
                 if i == len(current_seq):
                     S = []
                     for j in range(len(current_path) - 1):
-                        call_cache.add((current_path[j], current_path[j + 1]))
+                        call_cache.add((current_path[j][0], current_path[j + 1][0]))
                     for pos_idx, candidate_idx in enumerate(current_path):
-                        point = current_seq[pos_idx][candidate_idx]
+                        point = current_seq[pos_idx][candidate_idx[0]]
                         S.append([point["lo"], point["la"], point["link"], point["ratio"]])
                     distance = compute_distance(S, link_data, distance_data)
                     if distance < best_solution["distance"]:
@@ -517,7 +520,7 @@ def get_optimal_task3(two_passengers_seqs, three_passengers_seqs, link_data, dis
                     return
 
                 for idx, seq in enumerate(current_seq[i]):
-                    current_path.append(idx)
+                    current_path.append([idx,pos_list[len(current_path)]])
                     dfs(i + 1)
                     current_path.pop()
 
@@ -599,7 +602,9 @@ def task3(two_passengers_seqs, three_passengers_seqs, link_data, distance_data, 
         for seq in seqs:
             locations = []
             count = 1
+            pos_list = []
             for pos in seq:
+                pos_list.append(pos)
                 points = fetch_point_from_case(cases[i], pos, candidate=True)
                 if pos == "c":
                     locations.append([points])
@@ -615,9 +620,9 @@ def task3(two_passengers_seqs, three_passengers_seqs, link_data, distance_data, 
                 if i == len(current_seq):
                     S = []
                     for j in range(len(current_path) - 1):
-                        call_cache.add((current_path[j], current_path[j + 1]))
+                        call_cache.add((current_path[j][0], current_path[j + 1][0]))
                     for pos_idx, candidate_idx in enumerate(current_path):
-                        point = current_seq[pos_idx][candidate_idx]
+                        point = current_seq[pos_idx][candidate_idx[0]]
                         S.append([point["lo"], point["la"], point["link"], point["ratio"]])
                     distance = compute_distance(S, link_data_values, distance_data)
                     if distance < best_solution["distance"]:
@@ -626,7 +631,7 @@ def task3(two_passengers_seqs, three_passengers_seqs, link_data, distance_data, 
                     return
 
                 for idx, seq in enumerate(current_seq[i]):
-                    current_path.append(idx)
+                    current_path.append([idx,pos_list[len(current_path)]])
                     dfs(i + 1)
                     current_path.pop()
 
@@ -659,18 +664,79 @@ def eval_task3(optimal, solution):
 
 
 # TODO
-def task4():
-    logger.info("Start task 4 !!!")
+def task3result2tex(results):
+    table = ""
+    idx = 1
+    for result in results:
+        if idx != 1 and idx != 6:
+            idx += 1
+            continue
+        (seqs,dis,num) = result
+        line = "Case 0"
+        line += str(idx)
+        line += " & "
+        if idx == 1:
+            line += "双拼"
+        else:
+            line += "三拼"
+        line += " & $"
+        for x in seqs:
+            if x[-1] == "c":
+                line += "p_{c}"
+            else:
+                line += "p_{" + x[-1][0] + "}^{" + str(x[-1][-1]) + "(" + str(x[0]) + ")" + "}"
+        line += "$ & "
+        line += str(dis)
+        line += " & "
+        line += str(num)
+        line += " \\\\\n"
+        idx += 1
+        table += line
+    logger.info(table)
 
+def task3evl2tex(results):
+    table = "task3 result evl \n\n"
+    idx = 1
+    for result in results:
+        if idx != 1 and idx != 6:
+            idx += 1
+            continue
+        line = "Case 0"
+        line += str(idx)
+        line += " & "
+        if idx == 1:
+            line += "双拼"
+        else:
+            line += "三拼"
+        line += " & "
+        line += str(result['distance_rate'])
+        line += " & "
+        line += str(result['count_rate'])+" \\\\\n"
+        idx += 1
+        table += line
+    logger.info(table)
 
-def visualize(cases):
-    case = cases[0]
-    pc = (case["经度.6"], case["纬度.6"])
-    po1 = (case["经度"], case["纬度"])
-    po2 = (case["经度.1"], case["纬度.1"])
-    pd1 = (case["经度.2"], case["纬度.2"])
-    pd2 = (case["经度.3"], case["纬度.3"])
-
+def visualize2fromresult(case,result,name,candidate = False):
+    seq_list = []
+    if candidate == False:
+        seq_list = result
+        pc = (case["经度.6"], case["纬度.6"])
+        po1 = (case["经度"], case["纬度"])
+        pd1= (case["经度.1"], case["纬度.1"])
+        po2 = (case["经度.2"], case["纬度.2"])
+        pd2 = (case["经度.3"], case["纬度.3"])
+    else:
+        [seqs,_,__] = result
+        dict_ = {}
+        for seq in seqs:
+            dict_[seq[-1]] = seq[0]
+            seq_list.append(seq[-1])
+        pc = (case["经度.6"], case["纬度.6"])
+        po1 = (eval(case["经纬度"])[dict_['o1']][0], eval(case['经纬度'])[dict_["o1"]][1])
+        pd1 = (eval(case["经纬度.1"])[dict_['d1']][0], eval(case['经纬度.1'])[dict_['d1']][1])
+        po2 = (eval(case["经纬度.2"])[dict_['o2']][0], eval(case['经纬度.2'])[dict_['o2']][1])
+        pd2 = (eval(case["经纬度.3"])[dict_['d2']][0], eval(case['经纬度.3'])[dict_['d2']][1])
+    dict = {'c':pc, 'o1':po1, 'o2':po2, 'd1':pd1, 'd2':pd2}
     map1 = folium.Map(  # 高德底图
         location=[30.66, 104.11],
         zoom_start=13,
@@ -678,7 +744,6 @@ def visualize(cases):
         tiles="http://webrd02.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=8&x={x}&y={y}&z={z}",
         attr='&copy; <a href="http://ditu.amap.com/">高德地图</a>',
     )
-
     # folium标记函数中第一个参数是位置，先纬度，后经度
     folium.Marker(
         [pc[1], pc[0]], popup="<i>车点</i>", icon=folium.Icon(icon="home", color="orange")
@@ -703,21 +768,96 @@ def visualize(cases):
         popup="<i>终点1</i>",
         icon=folium.Icon(icon="ok-sign", color="red"),
     ).add_to(map1)
+    for i in range(len(seq_list)-1):
+        PolyLine(
+            [(dict[seq_list[i]][1], dict[seq_list[i]][0]), (dict[seq_list[i+1]][1], dict[seq_list[i+1]][0])], weight=5, color="blue", opacity=0.8
+        ).add_to(map1)
+    map1.save("Map_visualization"+name+".html")  # 生成网页
 
-    PolyLine(
-        [(pc[1], pc[0]), (po1[1], po1[0])], weight=5, color="blue", opacity=0.8
+def visualize3fromresult(case,result,name,candidate = False):
+    seq_list = []
+    if candidate == False:
+        seq_list = result
+        pc= (case['经度.6'],case['纬度.6'])
+        po1= (case['经度'],case['纬度'])
+        pd1= (case['经度.1'],case['纬度.1'])
+        po2= (case['经度.2'],case['纬度.2'])
+        pd2= (case['经度.3'],case['纬度.3'])
+        po3= (case['经度.4'],case['纬度.4'])
+        pd3= (case['经度.5'],case['纬度.5'])
+    else:
+        [seqs,_,__] = result
+        dict_ = {}
+        for seq in seqs:
+            dict_[seq[-1]] = seq[0]
+            seq_list.append(seq[-1])
+        pc = (case["经度.6"], case["纬度.6"])
+        po1 = (eval(case["经纬度"])[dict_['o1']][0], eval(case['经纬度'])[dict_["o1"]][1])
+        pd1 = (eval(case["经纬度.1"])[dict_['d1']][0], eval(case['经纬度.1'])[dict_['d1']][1])
+        po2 = (eval(case["经纬度.2"])[dict_['o2']][0], eval(case['经纬度.2'])[dict_['o2']][1])
+        pd2 = (eval(case["经纬度.3"])[dict_['d2']][0], eval(case['经纬度.3'])[dict_['d2']][1])
+        po3 = (eval(case["经纬度.4"])[dict_['o3']][0], eval(case['经纬度.4'])[dict_["o3"]][1])
+        pd3 = (eval(case["经纬度.5"])[dict_['d3']][0], eval(case['经纬度.5'])[dict_["d3"]][1])
+    dict = {'c':pc, 'o1':po1, 'o2':po2, 'd1':pd1, 'd2':pd2, 'o3':po3, 'd3':pd3}
+    map1 = folium.Map(  # 高德底图
+        location=[30.66, 104.11],
+        zoom_start=13,
+        control_scale=True,
+        tiles="http://webrd02.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=8&x={x}&y={y}&z={z}",
+        attr='&copy; <a href="http://ditu.amap.com/">高德地图</a>',
+    )
+    # folium标记函数中第一个参数是位置，先纬度，后经度
+    folium.Marker(
+        [pc[1], pc[0]], popup="<i>车点</i>", icon=folium.Icon(icon="home", color="orange")
     ).add_to(map1)
-    PolyLine(
-        [(po1[1], po1[0]), (po2[1], po2[0])], weight=5, color="blue", opacity=0.8
+    folium.Marker(
+        [po1[1], po1[0]],
+        popup="<i>起点1</i>",
+        icon=folium.Icon(icon="cloud", color="blue"),
     ).add_to(map1)
-    PolyLine(
-        [(po2[1], po2[0]), (pd1[1], pd1[0])], weight=5, color="blue", opacity=0.8
+    folium.Marker(
+        [po2[1], po2[0]],
+        popup="<i>起点2</i>",
+        icon=folium.Icon(icon="cloud", color="red"),
     ).add_to(map1)
-    PolyLine(
-        [(pd1[1], pd1[0]), (pd2[1], pd2[0])], weight=5, color="blue", opacity=0.8
+    folium.Marker(
+        [po3[1], po3[0]],
+        popup="<i>起点3</i>",
+        icon=folium.Icon(icon="cloud", color="green"),
     ).add_to(map1)
-    map1.save("Map_visualization.html")  # 生成网页
+    folium.Marker(
+        [pd1[1], pd1[0]],
+        popup="<i>终点1</i>",
+        icon=folium.Icon(icon="ok-sign", color="blue"),
+    ).add_to(map1)
+    folium.Marker(
+        [pd2[1], pd2[0]],
+        popup="<i>终点2</i>",
+        icon=folium.Icon(icon="ok-sign", color="red"),
+    ).add_to(map1)
+    folium.Marker(
+        [pd3[1], pd3[0]],
+        popup="<i>终点3</i>",
+        icon=folium.Icon(icon="ok-sign", color="green"),
+    ).add_to(map1)
+    for i in range(len(seq_list)-1):
+        PolyLine(
+            [(dict[seq_list[i]][1], dict[seq_list[i]][0]), (dict[seq_list[i+1]][1], dict[seq_list[i+1]][0])], weight=5, color="blue", opacity=0.8
+        ).add_to(map1)
+    map1.save("Map_visualization"+name+".html")  # 生成网页
 
+def task4(cases,result1,result2,result3,result4):
+    logger.info("Start task 4 !!!")
+    case_1 = cases[0]
+    visualize2fromresult(case_1,result1[0], "task1_case1")
+    visualize2fromresult(case_1,result2[0], "task2_case1")
+    case_6 = cases[5]
+    visualize3fromresult(case_6,result1[5], "task1_case6")
+    visualize3fromresult(case_6,result2[5], "task2_case6")
+    visualize2fromresult(case_1,result3[0], "task3_case1_optimal", True)
+    visualize2fromresult(case_1,result4[0], "task3_case1_solution", True)
+    visualize3fromresult(case_6,result3[5], "task3_case6_optimal", True)
+    visualize3fromresult(case_6,result4[5], "task3_case6_solution", True)
 
 if __name__ == "__main__":
     args = parse()
@@ -727,11 +867,11 @@ if __name__ == "__main__":
 
     distance_dic = np.zeros(distance_data.shape)
 
-    two_passengers_seqs, three_passengers_seqs, optimal = task1(
+    two_passengers_seqs, three_passengers_seqs, optimal, optimal_seq = task1(
         link_data.values, distance_data, new_cases
-    )
+    )  
 
-    task2(
+    fake_optimal_seq = task2(
         two_passengers_seqs,
         three_passengers_seqs,
         optimal,
@@ -739,12 +879,14 @@ if __name__ == "__main__":
         link_data.values,
         distance_data,
     )
+
     """
     Task 3
     """
     ##### compute and save brute force results
-    # task3_optimal = get_optimal_task3(two_passengers_seqs, three_passengers_seqs, link_data.values, distance_data, new_cases)
-    task3_optimal = json.loads(open("./task3.optimal").read())
+    #task3_optimal = get_optimal_task3(two_passengers_seqs, three_passengers_seqs, link_data.values, distance_data, new_cases)
+    #task3_optimal = json.loads(open("./task3.optimal").read())
+    task3_optimal = [([[0, 'c'], [4, 'o1'], [1, 'o2'], [3, 'd1'], [0, 'd2']], 22380.640709067142, 56), ([[0, 'c'], [0, 'o1'], [4, 'o2'], [5, 'd1'], [8, 'd2']], 16220.615535915078, 96), ([[0, 'c'], [0, 'o1'], [2, 'o2'], [1, 'd2'], [4, 'd1']], 15431.665995384064, 63), ([[0, 'c'], [4, 'o2'], [1, 'o1'], [2, 'd2'], [7, 'd1']], 13506.873184310927, 64), ([[0, 'c'], [0, 'o1'], [4, 'o2'], [0, 'd2'], [5, 'd1']], 21073.542038124986, 36), ([[0, 'c'], [1, 'o1'], [0, 'o3'], [5, 'o2'], [0, 'd1'], [5, 'd3'], [4, 'd2']], 16852.493604795996, 60), ([[0, 'c'], [0, 'o3'], [1, 'o1'], [2, 'o2'], [1, 'd3'], [3, 'd1'], [5, 'd2']], 18530.234744199628, 60), ([[0, 'c'], [0, 'o2'], [1, 'o1'], [3, 'o3'], [2, 'd1'], [3, 'd3'], [0, 'd2']], 22258.335564704055, 64), ([[0, 'c'], [4, 'o2'], [2, 'o1'], [2, 'o3'], [3, 'd2'], [3, 'd3'], [0, 'd1']], 11977.745265270445, 96), ([[0, 'c'], [5, 'o1'], [4, 'o2'], [3, 'o3'], [3, 'd2'], [3, 'd1'], [5, 'd3']], 11133.313870319971, 64)]
     ##### grid search the combination of filter method
     # grid_search = []
     # for k in range(1,9):
@@ -777,10 +919,12 @@ if __name__ == "__main__":
     ### for always find the shortest distance, use k=8 and filter_reverse=False
     ### for balanced solution, use k=4， filter_reverse=True or k=3, filter_reverse=False
     task3_solution = task3(two_passengers_seqs, three_passengers_seqs, link_data, distance_data, new_cases,
-                                                          False, 8)
-    task3_eval_result = eval_task3(task3_optimal, task3_solution)
+                                                        False, 3)
 
-
-    task4()
-
-    visualize(cases)
+    task3_eval_result,total = eval_task3(task3_optimal, task3_solution)
+    logger.info("table for task 3 optimal result\n\n")
+    task3result2tex(task3_optimal)
+    logger.info("table for task 3 result\n\n")
+    task3result2tex(task3_solution)
+    task3evl2tex(task3_eval_result)
+    task4(cases, optimal_seq,fake_optimal_seq,task3_optimal,task3_solution)
